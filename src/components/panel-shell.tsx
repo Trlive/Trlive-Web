@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -11,14 +11,14 @@ import {
   Settings,
   LogOut,
   Menu,
-  X,
+  UserPlus,
+  Loader2,
 } from "lucide-react";
-import { useState } from "react";
-
-type PanelType = "admin" | "agency" | "dealer";
+import { useEffect, useState } from "react";
+import { getSession, logout, type PanelSession, type PanelType } from "@/lib/api";
 
 type PanelShellProps = {
-  panel: PanelType;
+  panel: PanelType | "dealer";
   children: React.ReactNode;
 };
 
@@ -42,66 +42,97 @@ const panelConfig = {
       { label: "Genel Bakış", href: "/agency/dashboard", icon: LayoutDashboard },
       { label: "Yayıncılar", href: "/agency/broadcasters", icon: Users },
       { label: "Kazançlar", href: "/agency/earnings", icon: Coins },
-      { label: "WIP Mağazası", href: "/agency/wip", icon: Gift },
-      { label: "Madalya Sistemi", href: "/agency/medals", icon: Medal },
+      { label: "Davet ve Transfer", href: "/agency/invite", icon: UserPlus },
       { label: "Ayarlar", href: "/agency/settings", icon: Settings },
-    ],
-  },
-  dealer: {
-    title: "Coin Bayi Paneli",
-    subtitle: "TR LIVE COIN DEALER",
-    links: [
-      { label: "Genel Bakış", href: "/dealer/dashboard", icon: LayoutDashboard },
-      { label: "Coin İşlemleri", href: "/dealer/transactions", icon: Coins },
-      { label: "İşlem Geçmişi", href: "/dealer/history", icon: Users },
-      { label: "Ayarlar", href: "/dealer/settings", icon: Settings },
     ],
   },
 };
 
-export default function PanelShell({
-  panel,
-  children,
-}: PanelShellProps) {
+const roleText: Record<string, string> = { admin: "Yönetici", support: "Yardımcı admin" };
+
+/** Panel çerçevesi: oturum yoksa giriş sayfasına yönlendirir; menü, kullanıcı ve çıkış. */
+export default function PanelShell({ panel, children }: PanelShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  const config = panelConfig[panel];
+  const [session, setSession] = useState<PanelSession | null>(null);
+  const [checked, setChecked] = useState(false);
+
+  // Bayi paneli kaldırıldı (e-pin sistemi gelecek): eski adresler ana sayfaya döner.
+  const active: PanelType | null = panel === "dealer" ? null : panel;
+
+  useEffect(() => {
+    if (!active) {
+      router.replace("/");
+      return;
+    }
+    const s = getSession(active);
+    if (!s) {
+      router.replace(`/${active}/login`);
+      return;
+    }
+    setSession(s);
+    setChecked(true);
+    const onLogout = () => router.replace(`/${active}/login`);
+    window.addEventListener("trlive-logout", onLogout);
+    return () => window.removeEventListener("trlive-logout", onLogout);
+  }, [active, router]);
+
+  if (!active || !checked || !session) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#090909] text-sm text-gray-400">
+        <Loader2 size={18} className="mr-3 animate-spin text-[#d7b56d]" />
+        Oturum kontrol ediliyor...
+      </div>
+    );
+  }
+
+  const config = panelConfig[active];
+  const who = session.user.displayName || session.user.username || "Kullanıcı";
+  const roleLabel =
+    active === "admin"
+      ? roleText[session.user.systemRole ?? ""] ?? "Yetkili"
+      : session.agencyRole === "owner"
+        ? "Ajans sahibi"
+        : "Ajans asistanı";
+
+  async function signOut() {
+    await logout();
+    router.replace(`/${active}/login`);
+  }
 
   return (
     <div className="min-h-screen bg-[#090909] text-white">
       <div className="flex min-h-screen">
         <aside
-          className={`fixed inset-y-0 left-0 z-50 w-72 border-r border-[#292319] bg-[#101010] p-6 transition-transform lg:static lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[#292319] bg-[#101010] p-6 transition-transform lg:static lg:translate-x-0 ${
             menuOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="mb-10">
-            <div className="text-2xl font-black tracking-widest text-[#d7b56d]">
-              TR LIVE
-            </div>
-            <div className="mt-2 text-xs tracking-[0.25em] text-gray-500">
-              {config.subtitle}
-            </div>
+          <div className="mb-8">
+            <div className="text-2xl font-black tracking-widest text-[#d7b56d]">TR LIVE</div>
+            <div className="mt-2 text-xs tracking-[0.25em] text-gray-500">{config.subtitle}</div>
           </div>
 
-          <div className="mb-4 text-xs font-semibold uppercase tracking-widest text-gray-500">
-            Menü
+          <div className="mb-6 rounded-xl border border-[#30291e] bg-[#151209] p-4">
+            <p className="truncate text-sm font-semibold text-white">{who}</p>
+            <p className="mt-1 text-xs text-[#d7b56d]">{roleLabel}</p>
+            {active === "agency" && session.agencyName && <p className="mt-1 truncate text-xs text-gray-500">{session.agencyName}</p>}
           </div>
+
+          <div className="mb-4 text-xs font-semibold uppercase tracking-widest text-gray-500">Menü</div>
 
           <nav className="space-y-2">
             {config.links.map((item) => {
               const Icon = item.icon;
-              const active = pathname === item.href;
-
+              const isActive = pathname === item.href || pathname === `${item.href}/`;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setMenuOpen(false)}
                   className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm transition ${
-                    active
-                      ? "border border-[#8c713d] bg-[#292114] text-[#e5c77e]"
-                      : "text-gray-400 hover:bg-[#1d1d1d] hover:text-white"
+                    isActive ? "border border-[#8c713d] bg-[#292114] text-[#e5c77e]" : "text-gray-400 hover:bg-[#1d1d1d] hover:text-white"
                   }`}
                 >
                   <Icon size={18} />
@@ -111,13 +142,14 @@ export default function PanelShell({
             })}
           </nav>
 
-          <Link
-            href={`/${panel}/login`}
-            className="mt-10 flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-red-400 hover:bg-red-950/30"
+          <button
+            type="button"
+            onClick={signOut}
+            className="mt-auto flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm text-red-400 hover:bg-red-950/30"
           >
             <LogOut size={18} />
             Oturumu Kapat
-          </Link>
+          </button>
         </aside>
 
         {menuOpen && (
@@ -141,18 +173,14 @@ export default function PanelShell({
                 <Menu size={20} />
               </button>
               <div>
-                <h1 className="text-lg font-bold text-white">
-                  {config.title}
-                </h1>
-                <p className="text-xs text-gray-500">
-                  TR Live yönetim sistemi
-                </p>
+                <h1 className="text-lg font-bold text-white">{config.title}</h1>
+                <p className="text-xs text-gray-500">TR Live yönetim sistemi</p>
               </div>
             </div>
 
             <div className="hidden items-center gap-2 rounded-full border border-[#4b3c22] px-4 py-2 text-xs text-[#d7b56d] sm:flex">
               <span className="h-2 w-2 rounded-full bg-green-500" />
-              Panel
+              Güvenli oturum
             </div>
           </header>
 

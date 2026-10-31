@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     template: "%s | TR Live",
   },
   description:
-    "TR Live yönetim, ajans ve Coin bayi yönetim platformu.",
+    "TR Live yönetim ve ajans paneli.",
   applicationName: "TR Live",
   robots: {
     index: false,

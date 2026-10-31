@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   ShieldCheck,
   Building2,
-  Coins,
   ArrowRight,
   LockKeyhole,
   Crown,
@@ -12,7 +11,7 @@ const panels = [
   {
     title: "Yönetim Paneli",
     description:
-      "Kullanıcılar, ajanslar, bayiler ve platform yönetimi.",
+      "Kullanıcılar, ajanslar, coin, WIP ve platform yönetimi.",
     detail: "YETKİLİ YÖNETİM",
     href: "/admin/login",
     icon: ShieldCheck,
@@ -24,14 +23,6 @@ const panels = [
     detail: "AJANS YÖNETİMİ",
     href: "/agency/login",
     icon: Building2,
-  },
-  {
-    title: "Coin Bayi Paneli",
-    description:
-      "Coin işlemleri, satış geçmişi ve bayi yönetimi.",
-    detail: "BAYİ YÖNETİMİ",
-    href: "/dealer/login",
-    icon: Coins,
   },
 ];
 
@@ -58,7 +49,7 @@ export default function HomePage() {
           </p>
         </header>
 
-        <section className="grid gap-5 md:grid-cols-3">
+        <section className="mx-auto grid max-w-4xl gap-5 md:grid-cols-2">
           {panels.map((panel) => {
             const Icon = panel.icon;
 
@@ -102,7 +93,7 @@ export default function HomePage() {
 
         <footer className="mt-12 flex items-center justify-center gap-2 text-xs text-neutral-600">
           <LockKeyhole size={13} />
-          <span>Güvenli erişim · TR Live Yönetim Sistemi</span>
+          <span>Güvenli erişim · Uygulamadaki TR Live hesabınızla giriş yapın</span>
         </footer>
       </div>
     </main>

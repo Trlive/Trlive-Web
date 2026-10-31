@@ -1,16 +1,13 @@
-import type { Metadata } from "next";
-import PanelLogin from "@/components/panel-login";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Coin Bayi Girişi",
-};
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function DealerLoginPage() {
-  return (
-    <PanelLogin
-      panel="dealer"
-      title="Coin Bayi Girişi"
-      description="TR Live Coin bayi yönetim alanına güvenli erişim."
-    />
-  );
+// Bayi paneli kaldırıldı (Coin yükleme için e-pin sistemi gelecek). Eski adres ana sayfaya yönlendirilir.
+export default function Page() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/");
+  }, [router]);
+  return null;
 }

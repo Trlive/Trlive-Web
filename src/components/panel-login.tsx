@@ -1,9 +1,11 @@
 
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Crown, Eye, EyeOff, LockKeyhole } from "lucide-react";
+import { getSession, login } from "@/lib/api";
 
 type PanelType = "admin" | "agency" | "dealer";
 
@@ -19,114 +21,42 @@ const panelNames: Record<PanelType, string> = {
   dealer: "Coin Bayi Paneli",
 };
 
-const loginPaths: Record<PanelType, string | undefined> = {
-  admin: process.env.NEXT_PUBLIC_ADMIN_LOGIN_PATH,
-  agency: process.env.NEXT_PUBLIC_AGENCY_LOGIN_PATH,
-  dealer: process.env.NEXT_PUBLIC_DEALER_LOGIN_PATH,
+const panelHints: Record<PanelType, string> = {
+  admin: "Yönetici veya yardımcı admin yetkili TR Live hesabınızla giriş yapın.",
+  agency: "Ajans sahibi ya da ajans asistanı olan TR Live hesabınızla giriş yapın.",
+  dealer: "Bayi paneli kullanımdan kaldırıldı. Coin yükleme için e-pin sistemi hazırlanıyor.",
 };
-
-function getSafeInternalPath(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-
-  try {
-    const url = new URL(value, window.location.origin);
-    if (url.origin !== window.location.origin) return null;
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return null;
-  }
-}
 
 export default function PanelLogin({
   panel,
   title,
   description,
 }: PanelLoginProps) {
+  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const disabled = panel === "dealer";
+
+  // Bu sekmede zaten oturum açıksa doğrudan panele geç.
+  useEffect(() => {
+    if (panel !== "dealer" && getSession(panel)) router.replace(`/${panel}/dashboard`);
+  }, [panel, router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (panel === "dealer" || loading) return;
     setError("");
-
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-    const loginPath = loginPaths[panel];
-
-    if (!apiBase || !loginPath) {
-      setError(
-        "Giriş servisi henüz yapılandırılmadı. API bağlantı ayarları tamamlanmalıdır."
-      );
-      return;
-    }
-
-    let requestUrl: string;
-
-    try {
-      const normalizedBase = apiBase.endsWith("/")
-        ? apiBase
-        : `${apiBase}/`;
-      const normalizedPath = loginPath.replace(/^\/+/, "");
-      requestUrl = new URL(normalizedPath, normalizedBase).toString();
-    } catch {
-      setError("API adresi veya giriş yolu geçerli değil.");
-      return;
-    }
-
     setLoading(true);
-
     try {
-      const response = await fetch(requestUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          username,
-          password,
-        }),
-      });
-
-      const result = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          result?.message || "Giriş başarısız. Bilgilerinizi kontrol edin."
-        );
-      }
-
-      if (result?.redirectUrl) {
-        const safePath = getSafeInternalPath(result.redirectUrl);
-
-        if (!safePath) {
-          setError("Sunucudan güvenli olmayan bir yönlendirme geldi.");
-          return;
-        }
-
-        window.location.assign(safePath);
-        return;
-      }
-
-      if (result?.token) {
-        setError(
-          "Sunucu giriş yanıtı verdi ancak güvenli oturum aktarımı henüz tamamlanmadı."
-        );
-        return;
-      }
-
-      setError(
-        "Sunucu yanıtı alındı ancak beklenen oturum bilgisi bulunamadı."
-      );
+      // Uygulamadaki hesapla giriş; panel yetkisi sunucudan denetlenir. Şifre sitede saklanmaz.
+      await login(panel, username, password);
+      setPassword("");
+      router.replace(`/${panel}/dashboard`);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Bağlantı kurulamadı. Daha sonra tekrar deneyin."
-      );
+      setError(err instanceof Error ? err.message : "Bağlantı kurulamadı. Daha sonra tekrar deneyin.");
     } finally {
       setLoading(false);
     }
@@ -170,7 +100,7 @@ export default function PanelLogin({
                 htmlFor="username"
                 className="mb-2 block text-sm font-medium text-neutral-300"
               >
-                Kullanıcı adı veya e-posta
+                Kullanıcı adı veya telefon
               </label>
 
               <input
@@ -227,7 +157,7 @@ export default function PanelLogin({
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || disabled}
               className="gold-button w-full disabled:cursor-not-allowed disabled:opacity-60"
             >
               <LockKeyhole size={17} />
@@ -235,8 +165,11 @@ export default function PanelLogin({
             </button>
           </form>
 
-          <p className="mt-7 text-center text-xs leading-6 text-neutral-600">
-            Bu alan yalnızca yetkili kullanıcıların erişimi içindir.
+          <p className="mt-7 text-center text-xs leading-6 text-neutral-500">
+            {panelHints[panel]}
+          </p>
+          <p className="mt-2 text-center text-xs leading-6 text-neutral-600">
+            Bu alan yalnızca yetkili kullanıcıların erişimi içindir. Şifrenizi kimseyle paylaşmayın.
           </p>
         </section>
 
