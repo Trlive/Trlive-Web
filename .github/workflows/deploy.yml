@@ -1,0 +1,49 @@
+# Panelleri GitHub Pages'te yayınlar: main dalına her yüklemede (veya Actions → "Paneli yayınla" → Run workflow)
+# site derlenir ve https://trlive.github.io/<depo adı>/ adresine çıkar.
+# İlk kurulum: Settings → Pages → Source: "GitHub Actions".
+# Sunucu adresi değişirse: Settings → Secrets and variables → Actions → Variables → API_BASE_URL.
+name: Paneli yayınla
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  # Süren bir yayın yarıda kesilmesin (GitHub'ın önerisi).
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Paketleri kur
+        run: npm install --no-audit --no-fund
+      - name: Derle
+        run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.API_BASE_URL || 'https://130-61-222-48.sslip.io' }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
