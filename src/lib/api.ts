@@ -145,6 +145,32 @@ export async function api<T = Record<string, unknown>>(
   return (await parse(res)) as T;
 }
 
+/** Görsel yükleme (png / jpeg / webp): dosya gövdesi olduğu gibi gönderilir, sunucu adresini döner. */
+export async function apiUpload(path: string, file: File): Promise<{ url: string }> {
+  const s = getSession();
+  if (!s) throw new ApiError("Oturum bulunamadı. Lütfen yeniden giriş yapın.", 401);
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) throw new ApiError("Yalnızca PNG, JPEG veya WEBP görsel yüklenebilir.", 400);
+  if (file.size > 3 * 1024 * 1024) throw new ApiError("Görsel en fazla 3 MB olabilir.", 400);
+  const send = (token: string) =>
+    fetch(`${API_BASE}${path}`, {
+      method: "PUT",
+      headers: { "X-Client": "web-panel", "Content-Type": file.type, Authorization: `Bearer ${token}` },
+      body: file,
+      cache: "no-store",
+    });
+  let res: Response;
+  try {
+    res = await send(s.token);
+    if (res.status === 401 && (await refresh())) {
+      const fresh = getSession();
+      if (fresh) res = await send(fresh.token);
+    }
+  } catch {
+    throw new ApiError("Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.", 0);
+  }
+  return (await parse(res)) as { url: string };
+}
+
 /** Uygulama hesabıyla giriş + panel yetkisi denetimi. */
 export async function login(panel: PanelType, username: string, password: string): Promise<PanelSession> {
   let res: Response;

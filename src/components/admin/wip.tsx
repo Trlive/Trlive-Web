@@ -63,7 +63,7 @@ export default function AdminWip() {
   return (
     <div>
       <PageHeader icon={<Gift size={18} />} kicker="Üyelik" title="WIP Mağazası" description="WIP kademeleri, satıştaki paketler ve kullanıcıya WIP verme." />
-      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card title="Kullanıcıya WIP ver" subtitle="Kullanıcıyı bulun, kademe ve süreyi seçin">
           <UserPicker onPick={(u) => { setUser(u); setMsg(null); }} />
           {user && (

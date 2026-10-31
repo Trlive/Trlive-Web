@@ -1,213 +1,266 @@
 "use client";
 
-import { useState } from "react";
-import { Ban, Coins, ShieldCheck, Trash2, Undo2, Users } from "lucide-react";
-import { api, fmtDate, fmtNumber, getSession } from "@/lib/api";
-import { Badge, Card, Notice, PageHeader, inputCls } from "@/components/ui";
-import { Avatar, UserPicker, type AdminUser } from "./user-picker";
+import { useMemo, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { Search, Users, X } from "lucide-react";
+import { fmtDate, fmtNumber } from "@/lib/api";
+import { useApi } from "@/lib/use-api";
+import { Badge, Card, Empty, ErrorBox, Loading, PageHeader, inputCls, tableCls, tableWrap, tdCls, thCls } from "@/components/ui";
+import { Pager, StatusBadge, UserLink, fmtRel, isFullAdmin, roleText, selectCls, userHref } from "./kit";
 
-const roleText: Record<string, string> = { admin: "Yönetici", support: "Yardımcı admin", user: "Kullanıcı" };
+export type ListUser = {
+  id: string;
+  publicId: string | null;
+  specialId: string | null;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  systemRole: string;
+  accountStatus: string;
+  bannedUntil: string | null;
+  chatRestrictedUntil: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  online: boolean;
+  country: string | null;
+  gender: string | null;
+  coinLevel: number;
+  giftLevel: number;
+  wipLevel: number | null;
+  broadcasterStatus: string | null;
+  agencyName: string | null;
+  coins?: string;
+  diamonds?: string;
+  totalSentCoins?: string;
+  totalReceivedDiamonds?: string;
+  kycStatus?: string;
+};
 
-function newKey() {
-  return `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
+type ListResp = {
+  page: number;
+  pages: number;
+  total: number;
+  counts: { all: number; active: number; banned: number; deleted: number; staff: number; recent: number; new24h: number };
+  users: ListUser[];
+};
+
+const wipName = (l: number) => (l >= 11 ? "SWIP" : `WIP ${l}`);
+
+type Filters = { q: string; status: string; role: string; sort: string; gender: string; wip: boolean; broadcaster: boolean; recent: boolean; restricted: boolean; joined: boolean };
+const EMPTY: Filters = { q: "", status: "", role: "", sort: "new", gender: "", wip: false, broadcaster: false, recent: false, restricted: false, joined: false };
 
 export default function AdminUsers() {
-  const isAdmin = getSession("admin")?.user.systemRole === "admin";
-  const [user, setUser] = useState<AdminUser | null>(null);
-  const [hours, setHours] = useState("24");
-  const [reason, setReason] = useState("");
-  const [amount, setAmount] = useState("");
-  const [coinReason, setCoinReason] = useState("");
-  const [deleteReason, setDeleteReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const router = useRouter();
+  const full = isFullAdmin();
+  const [f, setF] = useState<Filters>(EMPTY);
+  const [draft, setDraft] = useState("");
+  const [page, setPage] = useState(1);
 
-  // fn false dönerse (onay penceresinde vazgeçildi) başarı mesajı gösterilmez.
-  async function run(label: string, fn: () => Promise<void | false>) {
-    if (busy) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      const r = await fn();
-      if (r !== false) setMsg({ tone: "ok", text: label });
-    } catch (e) {
-      setMsg({ tone: "error", text: e instanceof Error ? e.message : "İşlem başarısız." });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const path = useMemo(() => {
+    const p = new URLSearchParams({ page: String(page), sort: f.sort });
+    if (f.q) p.set("q", f.q);
+    if (f.status) p.set("status", f.status);
+    if (f.role) p.set("role", f.role);
+    if (f.gender) p.set("gender", f.gender);
+    if (f.wip) p.set("wip", "1");
+    if (f.broadcaster) p.set("broadcaster", "1");
+    if (f.recent) p.set("recent", "1");
+    if (f.restricted) p.set("restricted", "1");
+    if (f.joined) p.set("joined", "1");
+    return `/api/admin/users/list?${p.toString()}`;
+  }, [f, page]);
+  const { data, error, loading, reload } = useApi<ListResp>(path);
 
-  async function refreshUser(u: AdminUser) {
-    const r = await api<{ users: AdminUser[] }>(`/api/admin/users?q=${encodeURIComponent(u.publicId || u.id)}`);
-    const fresh = r.users?.find((x) => x.id === u.id);
-    if (fresh) setUser(fresh);
-  }
+  // Filtre değişince ilk sayfaya dönülür.
+  const set = (patch: Partial<Filters>) => {
+    setF((x) => ({ ...x, ...patch }));
+    setPage(1);
+  };
+  const search = (e: FormEvent) => {
+    e.preventDefault();
+    set({ q: draft.trim() });
+  };
+  const filtered = JSON.stringify(f) !== JSON.stringify(EMPTY);
+  const c = data?.counts;
 
-  const ban = () =>
-    run("Hesap banlandı.", async () => {
-      if (!user) return;
-      if (!reason.trim()) throw new Error("Ban nedeni yazın.");
-      const h = hours === "0" ? null : Number(hours);
-      await api(`/api/admin/users/${user.id}/ban`, { method: "POST", body: { hours: h, reason: reason.trim() } });
-      setReason("");
-      await refreshUser(user);
-    });
-
-  const unban = () =>
-    run("Ban kaldırıldı.", async () => {
-      if (!user) return;
-      await api(`/api/admin/users/${user.id}/unban`, { method: "POST", body: {} });
-      await refreshUser(user);
-    });
-
-  const coins = () =>
-    run("Coin bakiyesi güncellendi.", async () => {
-      if (!user) return;
-      if (!/^-?\d{1,12}$/.test(amount.trim()) || amount.trim() === "0") throw new Error("Geçerli bir Coin miktarı girin (çıkarmak için eksi).");
-      if (!window.confirm(`${user.displayName || user.username} hesabına ${amount} Coin ${Number(amount) < 0 ? "düşülecek" : "eklenecek"}. Onaylıyor musunuz?`)) return false;
-      // Aynı isteğin iki kez işlenmemesi için tekrar koruması anahtarı.
-      await api(`/api/admin/users/${user.id}/coins`, {
-        method: "POST",
-        body: { amount: amount.trim(), reason: coinReason.trim() || "Web paneli düzenlemesi" },
-        headers: { "Idempotency-Key": newKey() },
-      });
-      setAmount("");
-      setCoinReason("");
-      await refreshUser(user);
-    });
-
-  // Hesabı sil: e-posta ile gelen silme talepleri ve 18 yaşından küçük olduğu anlaşılan hesaplar için (yalnızca yönetici).
-  const removeAccount = () =>
-    run("Hesap silindi.", async () => {
-      if (!user) return false;
-      if (deleteReason.trim().length < 3) throw new Error("Silme nedenini yazın (ör. e-posta ile silme talebi).");
-      const typed = window.prompt(`${user.displayName || user.username} hesabı kalıcı olarak silinecek. Bu işlem geri alınamaz. Onay için SİL yazın.`);
-      if (typed === null) return false;
-      if (typed.trim().toLocaleUpperCase("tr-TR") !== "SİL") throw new Error("Onay metni hatalı; hesap silinmedi.");
-      await api(`/api/admin/users/${user.id}/delete`, { method: "POST", body: { reason: deleteReason.trim() } });
-      setDeleteReason("");
-      await refreshUser(user);
-    });
+  const chip = (label: string, value: number | undefined, active: boolean, onClick: () => void) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border px-3 py-2 text-left transition ${active ? "border-[#8c713d] bg-[#292114]" : "border-[#2a241a] bg-[#111] hover:border-[#4b3c22]"}`}
+    >
+      <span className="block text-[11px] text-gray-500">{label}</span>
+      <span className="block text-base font-bold text-white">{value === undefined ? "—" : fmtNumber(value)}</span>
+    </button>
+  );
 
   return (
     <div>
-      <PageHeader icon={<Users size={18} />} kicker="Kullanıcı yönetimi" title="Kullanıcılar" description="Kullanıcı arayın; ban, ban kaldırma, Coin ve hesap silme işlemlerini yapın." />
-      <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
-        <Card title="Kullanıcı ara" subtitle="Kullanıcı adı, görünen ad veya ID ile">
-          <UserPicker onPick={(u) => { setUser(u); setMsg(null); }} />
-        </Card>
+      <PageHeader
+        icon={<Users size={18} />}
+        kicker="Kullanıcı yönetimi"
+        title="Kullanıcılar"
+        description={
+          full
+            ? "Tüm üyeler. Bir kullanıcıya tıklayınca profil, bakiye, hediye, cihaz, şikâyet ve tüm işlemler açılır."
+            : "Tüm üyeler. Bir kullanıcıya tıklayınca profil, şikâyetler ve yetkinizdeki işlemler (ban, sohbet kısıtı, ad / fotoğraf) açılır."
+        }
+      />
 
-        <Card
-          title="Seçili kullanıcı"
-          action={
-            <div className="flex items-center gap-2 rounded-xl border border-[#4b3c22] bg-[#17140e] px-3 py-2 text-xs text-[#d7b56d]">
-              <ShieldCheck size={16} />
-              {isAdmin ? "Yönetici yetkisi" : "Yardımcı admin yetkisi"}
+      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+        {chip("Toplam", c?.all, !f.status && !f.role && !f.recent && !f.joined, () => set({ status: "", role: "", recent: false, joined: false }))}
+        {chip("Aktif", c?.active, f.status === "active", () => set({ status: "active", role: "" }))}
+        {chip("Banlı", c?.banned, f.status === "banned", () => set({ status: "banned", role: "" }))}
+        {chip("Silinmiş", c?.deleted, f.status === "deleted", () => set({ status: "deleted", role: "" }))}
+        {chip("Yetkili", c?.staff, f.role === "staff", () => set({ role: "staff", status: "" }))}
+        {chip("Son 24 sa aktif", c?.recent, f.recent, () => set({ recent: !f.recent }))}
+        {chip("Son 24 sa yeni üye", c?.new24h, f.joined, () => set({ joined: !f.joined }))}
+      </div>
+
+      <Card>
+        <div className="space-y-3">
+          <form onSubmit={search} className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex-1">
+              <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={full ? "Kullanıcı adı, görünen ad, ID, özel ID veya telefon" : "Kullanıcı adı, görünen ad veya ID"}
+                aria-label="Kullanıcı ara"
+                className={`${inputCls} pl-10`}
+              />
             </div>
-          }
-        >
-          {!user ? (
-            <p className="py-10 text-center text-sm text-gray-500">Soldan bir kullanıcı seçin.</p>
-          ) : (
-            <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <Avatar url={user.avatarUrl} name={user.displayName || user.username} size={56} />
-                <div className="min-w-0">
-                  <p className="truncate text-lg font-bold text-white">{user.displayName || user.username}</p>
-                  <p className="text-sm text-gray-500">@{user.username} · ID {user.publicId ?? "—"}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Badge tone="gray">{roleText[user.systemRole ?? "user"] ?? user.systemRole}</Badge>
-                    {user.accountStatus === "banned" ? (
-                      <Badge tone="red">Banlı {user.bannedUntil ? `· ${fmtDate(user.bannedUntil)}'e kadar` : "· süresiz"}</Badge>
-                    ) : user.accountStatus === "deleted" ? (
-                      <Badge tone="gray">Silinmiş</Badge>
-                    ) : (
-                      <Badge tone="green">Aktif</Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
+            <button type="submit" className="gold-button shrink-0 px-6">
+              Ara
+            </button>
+          </form>
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={f.status} onChange={(e) => set({ status: e.target.value })} className={selectCls} aria-label="Durum">
+              <option value="">Tüm durumlar</option>
+              <option value="active">Aktif</option>
+              <option value="banned">Banlı</option>
+              <option value="deleted">Silinmiş</option>
+            </select>
+            <select value={f.role} onChange={(e) => set({ role: e.target.value })} className={selectCls} aria-label="Rol">
+              <option value="">Tüm roller</option>
+              <option value="user">Kullanıcı</option>
+              <option value="support">Yardımcı admin</option>
+              <option value="admin">Yönetici</option>
+              <option value="staff">Tüm yetkililer</option>
+            </select>
+            <select value={f.gender} onChange={(e) => set({ gender: e.target.value })} className={selectCls} aria-label="Cinsiyet">
+              <option value="">Tüm cinsiyetler</option>
+              <option value="female">Kadın</option>
+              <option value="male">Erkek</option>
+            </select>
+            <select value={f.sort} onChange={(e) => set({ sort: e.target.value })} className={selectCls} aria-label="Sıralama">
+              <option value="new">En yeni üye</option>
+              <option value="old">En eski üye</option>
+              <option value="seen">Son görülen</option>
+              {full && <option value="coins">En çok Coin</option>}
+              {full && <option value="diamonds">En çok Elmas</option>}
+              {full && <option value="spent">En çok harcayan</option>}
+              {full && <option value="received">En çok kazanan</option>}
+              <option value="name">Kullanıcı adı (A-Z)</option>
+            </select>
+            {(
+              [
+                ["wip", "WIP üyeleri"],
+                ["broadcaster", "Yayıncılar"],
+                ["restricted", "Sohbeti kısıtlı"],
+              ] as const
+            ).map(([k, label]) => (
+              <label key={k} className="flex cursor-pointer items-center gap-2 rounded-xl border border-[#30291e] px-3 py-2 text-sm text-gray-300">
+                <input type="checkbox" checked={f[k]} onChange={(e) => set({ [k]: e.target.checked } as Partial<Filters>)} className="accent-[#d7b56d]" />
+                {label}
+              </label>
+            ))}
+            {filtered && (
+              <button
+                type="button"
+                onClick={() => {
+                  setF(EMPTY);
+                  setPage(1);
+                  setDraft("");
+                }}
+                className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm text-gray-400 hover:text-white"
+              >
+                <X size={15} /> Filtreleri temizle
+              </button>
+            )}
+          </div>
+        </div>
+      </Card>
 
-              {isAdmin && user.coins !== undefined && (
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-xl border border-[#262117] bg-[#141210] p-3">
-                    <p className="text-xs text-gray-500">Coin</p>
-                    <p className="mt-1 font-bold text-white">{fmtNumber(user.coins)}</p>
-                  </div>
-                  <div className="rounded-xl border border-[#262117] bg-[#141210] p-3">
-                    <p className="text-xs text-gray-500">Elmas</p>
-                    <p className="mt-1 font-bold text-white">{fmtNumber(user.diamonds)}</p>
-                  </div>
-                </div>
-              )}
-              {user.banReason && <p className="text-sm text-gray-400">Ban nedeni: {user.banReason}</p>}
-
-              {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
-
-              {user.accountStatus === "banned" ? (
-                <button type="button" disabled={busy} onClick={unban} className="gold-button w-full disabled:opacity-60">
-                  <Undo2 size={17} />
-                  Banı kaldır
-                </button>
-              ) : user.accountStatus !== "deleted" ? (
-                <div className="space-y-3 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-red-300">
-                    <Ban size={16} />
-                    Hesabı banla
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
-                    <select value={hours} onChange={(e) => setHours(e.target.value)} className={inputCls} aria-label="Ban süresi">
-                      <option value="1">1 saat</option>
-                      <option value="24">1 gün</option>
-                      <option value="72">3 gün</option>
-                      <option value="168">7 gün</option>
-                      <option value="720">30 gün</option>
-                      <option value="0">Süresiz</option>
-                    </select>
-                    <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder="Neden (zorunlu)" className={inputCls} />
-                  </div>
-                  <button type="button" disabled={busy} onClick={ban} className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60">
-                    Banla
-                  </button>
-                </div>
-              ) : null}
-
-              {isAdmin && user.accountStatus === "active" && (
-                <div className="space-y-3 rounded-xl border border-[#30291e] p-4">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-[#d7b56d]">
-                    <Coins size={16} />
-                    Coin ekle / düş
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
-                    <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" placeholder="ör. 1000 ya da -500" className={inputCls} />
-                    <input value={coinReason} onChange={(e) => setCoinReason(e.target.value)} maxLength={300} placeholder="Açıklama (kayda geçer)" className={inputCls} />
-                  </div>
-                  <button type="button" disabled={busy} onClick={coins} className="gold-button w-full disabled:opacity-60">
-                    Uygula
-                  </button>
-                  <p className="text-xs text-gray-500">Tüm Coin işlemleri mali denetim kaydına yazılır.</p>
-                </div>
-              )}
-
-              {isAdmin && user.accountStatus !== "deleted" && user.systemRole !== "admin" && (
-                <div className="space-y-3 rounded-xl border border-red-500/30 p-4">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-red-300">
-                    <Trash2 size={16} />
-                    Hesabı sil
-                  </p>
-                  <p className="text-xs leading-5 text-gray-500">
-                    E-posta ile gelen silme talepleri veya 18 yaşından küçük olduğu anlaşılan hesaplar için. Kişisel bilgiler silinir;
-                    ödeme ve güvenlik kayıtları yasal süre boyunca saklanır.
-                  </p>
-                  <input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} maxLength={300} placeholder="Silme nedeni (zorunlu, kayda geçer)" className={inputCls} />
-                  <button type="button" disabled={busy} onClick={removeAccount} className="w-full rounded-xl border border-red-500/60 px-4 py-3 text-sm font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-60">
-                    Hesabı kalıcı olarak sil
-                  </button>
-                </div>
-              )}
+      <div className="mt-5">
+        <Card>
+          {loading && !data && <Loading />}
+          {error && <ErrorBox message={error} onRetry={reload} />}
+          {data && data.users.length === 0 && <Empty title="Kullanıcı bulunamadı" note={filtered ? "Filtreleri değiştirmeyi deneyin." : undefined} />}
+          {data && data.users.length > 0 && (
+            <div className={`${tableWrap} ${loading ? "opacity-60" : ""}`}>
+              <table className={`${tableCls} min-w-[900px]`}>
+                <thead>
+                  <tr>
+                    <th className={thCls}>Kullanıcı</th>
+                    <th className={thCls}>Durum</th>
+                    <th className={thCls}>Seviye</th>
+                    {full && <th className={`${thCls} text-right`}>Coin</th>}
+                    {full && <th className={`${thCls} text-right`}>Elmas</th>}
+                    <th className={thCls}>Üyelik</th>
+                    <th className={thCls}>Son görülme</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.users.map((u) => (
+                    <tr key={u.id} onClick={() => router.push(userHref(u.id))} className="cursor-pointer hover:bg-[#15120c]">
+                      <td className={tdCls}>
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <UserLink
+                            user={u}
+                            sub={
+                              <>
+                                @{u.username}
+                                {u.publicId ? ` · ID ${u.publicId}` : ""}
+                                {u.specialId ? ` · Özel ${u.specialId}` : ""}
+                              </>
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className={tdCls}>
+                        <div className="flex flex-wrap gap-1">
+                          <StatusBadge status={u.accountStatus} bannedUntil={u.bannedUntil} />
+                          {u.systemRole !== "user" && <Badge tone="blue">{roleText[u.systemRole] ?? u.systemRole}</Badge>}
+                          {u.chatRestrictedUntil && <Badge tone="red">Sohbet kısıtlı</Badge>}
+                        </div>
+                      </td>
+                      <td className={tdCls}>
+                        <div className="flex flex-wrap gap-1">
+                          <Badge tone="gray">Lv {u.coinLevel ?? 0}</Badge>
+                          {u.wipLevel ? <Badge>{wipName(u.wipLevel)}</Badge> : null}
+                          {u.broadcasterStatus === "approved" && <Badge tone="green">Yayıncı{u.agencyName ? ` · ${u.agencyName}` : ""}</Badge>}
+                        </div>
+                      </td>
+                      {full && <td className={`${tdCls} text-right font-medium`}>{fmtNumber(u.coins)}</td>}
+                      {full && <td className={`${tdCls} text-right font-medium`}>{fmtNumber(u.diamonds)}</td>}
+                      <td className={`${tdCls} whitespace-nowrap text-xs text-gray-400`}>{fmtDate(u.createdAt, false)}</td>
+                      <td className={`${tdCls} whitespace-nowrap text-xs`}>
+                        {u.online ? (
+                          <span className="inline-flex items-center gap-1.5 text-emerald-300">
+                            <span className="h-2 w-2 rounded-full bg-emerald-400" /> Çevrimiçi
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">{fmtRel(u.lastSeenAt)}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
+          {data && <Pager page={data.page} pages={data.pages} total={data.total} onPage={setPage} />}
         </Card>
       </div>
     </div>

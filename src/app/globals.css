@@ -36,20 +36,26 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
+/* Taban katmanında: yazı tipi miras alınır, Tailwind boyut sınıfları (text-sm vb.) yine de uygulanır. */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
 }
 
-button {
-  cursor: pointer;
-}
+/* Taban katmanında: Tailwind sınıfları (bağlantı rengi, altı çizili, devre dışı imleci) bunları ezebilsin. */
+@layer base {
+  button {
+    cursor: pointer;
+  }
 
-a {
-  color: inherit;
-  text-decoration: none;
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 ::selection {
@@ -72,24 +78,33 @@ a {
   padding: 22px;
 }
 
-.gold-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  min-height: 44px;
-  padding: 0 20px;
-  border: 1px solid #e5bf70;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #f0d18b, #bd8c38);
-  color: #17120a;
-  font-weight: 800;
-  transition: filter 0.2s ease, transform 0.2s ease;
-}
+/* Bileşen katmanında: px-*, w-*, sm:w-auto gibi Tailwind sınıfları düğmeyi ezebilsin. Dar ekranda tam genişlik. */
+@layer components {
+  .gold-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-height: 44px;
+    padding: 0 20px;
+    border: 1px solid #e5bf70;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #f0d18b, #bd8c38);
+    color: #17120a;
+    font-weight: 800;
+    transition: filter 0.2s ease, transform 0.2s ease;
+  }
 
-.gold-button:hover {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
+  .gold-button:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  @media (max-width: 640px) {
+    .gold-button {
+      width: 100%;
+    }
+  }
 }
 
 .outline-button {
@@ -127,7 +142,4 @@ a {
     border-radius: 13px;
   }
 
-  .gold-button {
-    width: 100%;
-  }
 }

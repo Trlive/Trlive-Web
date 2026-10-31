@@ -27,6 +27,9 @@ const panelHints: Record<PanelType, string> = {
   dealer: "Bayi paneli kullanımdan kaldırıldı. Coin yükleme için e-pin sistemi hazırlanıyor.",
 };
 
+// Yardımcı admin genel bakışı göremez; doğrudan kullanıcı listesine gider.
+const home = (panel: string, role?: string) => (panel === "admin" && role === "support" ? "/admin/users" : `/${panel}/dashboard`);
+
 export default function PanelLogin({
   panel,
   title,
@@ -42,7 +45,8 @@ export default function PanelLogin({
 
   // Bu sekmede zaten oturum açıksa doğrudan panele geç.
   useEffect(() => {
-    if (panel !== "dealer" && getSession(panel)) router.replace(`/${panel}/dashboard`);
+    const s = panel !== "dealer" ? getSession(panel) : null;
+    if (s) router.replace(home(panel, s.user.systemRole));
   }, [panel, router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -52,9 +56,9 @@ export default function PanelLogin({
     setLoading(true);
     try {
       // Uygulamadaki hesapla giriş; panel yetkisi sunucudan denetlenir. Şifre sitede saklanmaz.
-      await login(panel, username, password);
+      const s = await login(panel, username, password);
       setPassword("");
-      router.replace(`/${panel}/dashboard`);
+      router.replace(home(panel, s.user.systemRole));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Bağlantı kurulamadı. Daha sonra tekrar deneyin.");
     } finally {

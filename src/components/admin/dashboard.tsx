@@ -1,9 +1,49 @@
 "use client";
 
-import { Activity, AlertTriangle, Gift, Mic, Radio, Server, ShieldCheck, UserPlus, Users } from "lucide-react";
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { Activity, AlertTriangle, Bug, Building2, Flag, Gift, Headphones, Fingerprint, Mic, Radio, Server, ShieldCheck, UserPlus, Users, Video } from "lucide-react";
 import { fmtNumber } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { Card, ErrorBox, Loading, PageHeader, StatCard } from "@/components/ui";
+import DailyChart from "./daily-chart";
+
+type Pending = { support: number; reports?: number; kyc?: number; transfers?: number; applications?: number; broadcasters?: number; errors?: number };
+
+function PendingTasks() {
+  const { data } = useApi<Pending>("/api/admin/overview/pending");
+  if (!data) return null;
+  const items: [string, number | undefined, string, ReactNode][] = [
+    ["Açık şikâyet", data.reports, "/admin/reports", <Flag key="f" size={18} />],
+    ["Yanıt bekleyen destek", data.support, "/admin/support", <Headphones key="h" size={18} />],
+    ["Yayıncı başvurusu", data.broadcasters, "/admin/agencies", <Video key="v" size={18} />],
+    ["Ajans başvurusu", data.applications, "/admin/agencies", <Building2 key="b" size={18} />],
+    ["Platform onayı bekleyen transfer", data.transfers, "/admin/agencies", <Building2 key="t" size={18} />],
+    ["Kimlik onayı bekleyen", data.kyc, "/admin/kyc", <Fingerprint key="k" size={18} />],
+    ["Uygulama hatası (24 sa)", data.errors, "/admin/security", <Bug key="e" size={18} />],
+  ];
+  return (
+    <Card title="Bekleyen işler" subtitle="Tıklayınca ilgili sayfa açılır">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {items.map(([label, n, href, icon]) => (
+          <Link
+            key={label}
+            href={href}
+            className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition hover:border-[#8c713d] ${
+              n ? "border-[#5a4524] bg-[#1d170d]" : "border-[#262117] bg-[#141210]"
+            }`}
+          >
+            <span className="flex min-w-0 items-center gap-3 text-sm text-gray-300">
+              <span className={n ? "text-[#e5c77e]" : "text-gray-600"}>{icon}</span>
+              <span className="truncate">{label}</span>
+            </span>
+            <span className={`text-lg font-bold ${n ? "text-white" : "text-gray-600"}`}>{n ?? 0}</span>
+          </Link>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 type Dash = {
   time: string;
@@ -58,6 +98,10 @@ export default function AdminDashboard() {
             />
             <StatCard label="Uygulama hatası (24 sa)" value={fmtNumber(data.alerts.errors24h)} icon={<AlertTriangle size={20} />} tone={data.alerts.errors24h > 0 ? "red" : "green"} />
           </div>
+
+          <PendingTasks />
+
+          <DailyChart />
 
           <Card title="Sunucu durumu" subtitle={`Son güncelleme: ${new Date(data.time).toLocaleTimeString("tr-TR")}`}>
             <div className="grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">

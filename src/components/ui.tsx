@@ -144,5 +144,5 @@ export const inputCls =
 
 export const tableWrap = "overflow-x-auto";
 export const tableCls = "w-full min-w-[640px] text-left text-sm";
-export const thCls = "border-b border-[#30291e] px-4 py-3 font-medium text-gray-500";
+export const thCls = "whitespace-nowrap border-b border-[#30291e] px-4 py-3 font-medium text-gray-500";
 export const tdCls = "border-b border-[#1f1b14] px-4 py-3 text-gray-200";

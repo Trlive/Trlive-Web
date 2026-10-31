@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import PanelShell from "@/components/panel-shell";
-import AdminCoins from "@/components/admin/coins";
+import AdminFinance from "@/components/admin/finance";
 
 export const metadata: Metadata = {
-  title: "Coin İşlemleri",
+  title: "Mali Kayıtlar",
 };
 
 export default function Page() {
   return (
     <PanelShell panel="admin">
-      <AdminCoins />
+      <AdminFinance />
     </PanelShell>
   );
 }

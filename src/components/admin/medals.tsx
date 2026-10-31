@@ -39,7 +39,7 @@ export default function AdminMedals() {
   return (
     <div>
       <PageHeader icon={<Medal size={18} />} kicker="Madalya yönetimi" title="Madalya Sistemi" description="Madalya (rozet) seçin ve bir kullanıcıya süreli ya da süresiz verin. Madalyalar profilde görünür." />
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <Card title="Madalyalar" subtitle={data ? `${data.items.length} madalya` : undefined}>
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Madalya adı ara..." className={`${inputCls} mb-4`} aria-label="Madalya ara" />
           {loading && !data && <Loading />}
