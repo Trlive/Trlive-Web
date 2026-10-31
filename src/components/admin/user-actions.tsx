@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { Ban, BadgeCheck, Coins, Crown, Gift, Hash, ImageOff, KeyRound, LogOut, MessageSquareOff, PenLine, ShieldCheck, Trash2, Undo2, UserCog, Video } from "lucide-react";
+import { Ban, BadgeCheck, Coins, Crown, Gift, Hash, ImageOff, KeyRound, LogOut, MessageSquareOff, PenLine, ShieldCheck, Trash2, TrendingUp, Undo2, UserCog, Video } from "lucide-react";
 import { api, fmtNumber } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { Card, inputCls } from "@/components/ui";
@@ -104,9 +104,11 @@ export default function UserActions({ data, onChanged }: { data: Detail; onChang
         </ActionCard>
       )}
 
-      {full && u.accountStatus === "active" && <CoinCard data={data} onChanged={onChanged} />}
-      {full && <WipCard data={data} onChanged={onChanged} />}
-      {full && <GrantCard data={data} onChanged={onChanged} />}
+      {/* Yardımcı admin de: Coin yükleme (en fazla 100.000, düşemez), seviye (en fazla 100), WIP ve öğe — yalnızca normal kullanıcılara. */}
+      {(full || canSanction) && u.accountStatus === "active" && <CoinCard data={data} onChanged={onChanged} />}
+      {(full || canSanction) && <LevelCard data={data} onChanged={onChanged} />}
+      {(full || canSanction) && <WipCard data={data} onChanged={onChanged} />}
+      {(full || canSanction) && <GrantCard data={data} onChanged={onChanged} />}
       {full && <SpecialIdCard data={data} onChanged={onChanged} />}
       {full && <HostBadgeCard data={data} onChanged={onChanged} />}
       {full && data.broadcaster && <BroadcasterCard data={data} onChanged={onChanged} />}
@@ -290,12 +292,13 @@ function NameCard({ data, onChanged }: { data: Detail; onChanged: () => void }) 
 
 function CoinCard({ data, onChanged }: { data: Detail; onChanged: () => void }) {
   const u = data.user;
+  const full = data.viewer.full;
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   // Tekrar koruması: aynı giriş için aynı anahtar (cevap kaybolup yeniden denenirse Coin iki kez eklenmez); başarıdan sonra yenilenir.
   const key = useRef(newKey());
   return (
-    <ActionCard title={`Coin ekle / düş · bakiye ${fmtNumber(u.coins)}`} icon={<Coins size={16} />}>
+    <ActionCard title={full ? `Coin ekle / düş · bakiye ${fmtNumber(u.coins)}` : "Coin yükle (en fazla 100.000)"} icon={<Coins size={16} />}>
       {(run, busy) => (
         <>
           <div className="grid gap-2 sm:grid-cols-[160px_minmax(0,1fr)]">
@@ -306,7 +309,7 @@ function CoinCard({ data, onChanged }: { data: Detail; onChanged: () => void }) 
                 key.current = newKey();
               }}
               inputMode="numeric"
-              placeholder="1000 ya da -500"
+              placeholder={full ? "1000 ya da -500" : "ör. 5000"}
               className={inputCls}
               aria-label="Coin miktarı"
             />
@@ -320,6 +323,7 @@ function CoinCard({ data, onChanged }: { data: Detail; onChanged: () => void }) 
               run("Coin bakiyesi güncellendi.", async () => {
                 const a = amount.trim();
                 if (!/^-?\d{1,12}$/.test(a) || /^-?0+$/.test(a)) throw new Error("Geçerli bir Coin miktarı girin (düşmek için eksi).");
+                if (!full && (a.startsWith("-") || Number(a) > 100000)) throw new Error("Yardımcı admin tek seferde 1 ile 100.000 arası Coin yükleyebilir; düşemez.");
                 if (!window.confirm(`${u.displayName || u.username} hesabına ${fmtNumber(a)} Coin ${a.startsWith("-") ? "düşülecek" : "eklenecek"}. Onaylıyor musunuz?`)) return false;
                 await api(`/api/admin/users/${u.id}/coins`, {
                   method: "POST",
@@ -335,7 +339,55 @@ function CoinCard({ data, onChanged }: { data: Detail; onChanged: () => void }) 
           >
             Uygula
           </button>
-          <p className="text-xs text-gray-500">Tüm Coin işlemleri mali denetim kaydına yazılır.</p>
+          <p className="text-xs text-gray-500">Tüm Coin işlemleri, yapan yetkiliyle birlikte mali denetim kaydına yazılır.</p>
+        </>
+      )}
+    </ActionCard>
+  );
+}
+
+function LevelCard({ data, onChanged }: { data: Detail; onChanged: () => void }) {
+  const u = data.user;
+  const full = data.viewer.full;
+  const max = full ? 300 : 100;
+  const [kind, setKind] = useState<"user" | "host">("user");
+  const [level, setLevel] = useState("");
+  const current = kind === "user" ? u.coinLevel : u.giftLevel;
+  return (
+    <ActionCard title={`Seviye ver · kullanıcı Lv ${u.coinLevel} · yayıncı Lv ${u.giftLevel}`} icon={<TrendingUp size={16} />}>
+      {(run, busy) => (
+        <>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <select value={kind} onChange={(e) => setKind(e.target.value as "user" | "host")} className={selectCls} aria-label="Seviye türü">
+              <option value="user">Kullanıcı seviyesi</option>
+              <option value="host">Yayıncı seviyesi</option>
+            </select>
+            <input value={level} onChange={(e) => setLevel(e.target.value.replace(/\D/g, "").slice(0, 3))} inputMode="numeric" placeholder={`1-${max}`} className={inputCls} aria-label="Seviye" />
+          </div>
+          <p className="text-xs text-gray-500">
+            {full
+              ? "Yönetici 1-300 arası her seviyeyi verebilir (düşürebilir de)."
+              : "Yardımcı admin en fazla 100. seviyeyi verebilir; yalnızca yükseltir."}{" "}
+            Sonraki hediyeler bu seviyenin üstüne eklenir; gerçek harcama / kazanç değişmez.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            className="gold-button disabled:opacity-60 sm:w-auto"
+            onClick={() =>
+              run("Seviye verildi.", async () => {
+                const n = Number(level);
+                if (!Number.isInteger(n) || n < 1 || n > max) throw new Error(`Seviye 1-${max} arasında olmalı.`);
+                if (!full && n <= current) throw new Error(`Kullanıcı zaten ${current}. seviyede; yardımcı admin yalnızca daha yüksek seviye verebilir.`);
+                if (!window.confirm(`${u.displayName || u.username} ${kind === "user" ? "kullanıcı" : "yayıncı"} seviyesi ${current} → ${n} olacak. Onaylıyor musunuz?`)) return false;
+                await api(`/api/admin/users/${u.id}/level`, { method: "POST", body: { kind, level: n } });
+                setLevel("");
+                onChanged();
+              })
+            }
+          >
+            Seviyeyi ver
+          </button>
         </>
       )}
     </ActionCard>
@@ -666,7 +718,7 @@ function StaffRoleCard({ data, onChanged }: { data: Detail; onChanged: () => voi
     <ActionCard title={`Yetki · ${isSupport ? "Yardımcı admin" : "Kullanıcı"}`} icon={<UserCog size={16} />}>
       {(run, busy) => (
         <>
-          <p className="text-xs text-gray-500">Yardımcı admin: kullanıcı arama, ban, sohbet kısıtı, nick / fotoğraf değiştirme ve destek mesajlarına yanıt.</p>
+          <p className="text-xs text-gray-500">Yardımcı admin: kullanıcı arama, ban, sohbet kısıtı, nick / fotoğraf, Coin yükleme (tek seferde en fazla 100.000), seviye (en fazla 100), WIP ve öğe verme, destek yanıtları.</p>
           <button
             type="button"
             disabled={busy || (!isSupport && u.accountStatus !== "active")}

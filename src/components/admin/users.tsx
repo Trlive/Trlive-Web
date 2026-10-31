@@ -103,7 +103,7 @@ export default function AdminUsers() {
         description={
           full
             ? "Tüm üyeler. Bir kullanıcıya tıklayınca profil, bakiye, hediye, cihaz, şikâyet ve tüm işlemler açılır."
-            : "Tüm üyeler. Bir kullanıcıya tıklayınca profil, şikâyetler ve yetkinizdeki işlemler (ban, sohbet kısıtı, ad / fotoğraf) açılır."
+            : "Tüm üyeler. Bir kullanıcıya tıklayınca profil, şikâyetler ve yetkinizdeki işlemler (ban, sohbet kısıtı, ad / fotoğraf, Coin yükleme, seviye, WIP, öğe) açılır."
         }
       />
 

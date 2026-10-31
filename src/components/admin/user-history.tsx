@@ -34,6 +34,7 @@ export const txTypeText: Record<string, string> = {
 
 export const actionText: Record<string, string> = {
   admin_coin_adjustment: "Coin düzenlemesi",
+  level_set: "Seviye verildi",
   account_ban: "Ban",
   account_unban: "Ban kaldırma",
   account_delete: "Hesap silme",
