@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, type FormEvent } from "react";
@@ -18,6 +19,25 @@ const panelNames: Record<PanelType, string> = {
   dealer: "Coin Bayi Paneli",
 };
 
+const loginPaths: Record<PanelType, string | undefined> = {
+  admin: process.env.NEXT_PUBLIC_ADMIN_LOGIN_PATH,
+  agency: process.env.NEXT_PUBLIC_AGENCY_LOGIN_PATH,
+  dealer: process.env.NEXT_PUBLIC_DEALER_LOGIN_PATH,
+};
+
+function getSafeInternalPath(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
 export default function PanelLogin({
   panel,
   title,
@@ -34,9 +54,7 @@ export default function PanelLogin({
     setError("");
 
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-    const loginPath = process.env[
-      `NEXT_PUBLIC_${panel.toUpperCase()}_LOGIN_PATH`
-    ];
+    const loginPath = loginPaths[panel];
 
     if (!apiBase || !loginPath) {
       setError(
@@ -45,23 +63,33 @@ export default function PanelLogin({
       return;
     }
 
+    let requestUrl: string;
+
+    try {
+      const normalizedBase = apiBase.endsWith("/")
+        ? apiBase
+        : `${apiBase}/`;
+      const normalizedPath = loginPath.replace(/^\/+/, "");
+      requestUrl = new URL(normalizedPath, normalizedBase).toString();
+    } catch {
+      setError("API adresi veya giriş yolu geçerli değil.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const response = await fetch(
-        `${apiBase.replace(/\/$/, "")}/${loginPath.replace(/^\//, "")}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            username,
-            password,
-          }),
-        }
-      );
+      const response = await fetch(requestUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      });
 
       const result = await response.json().catch(() => null);
 
@@ -72,7 +100,14 @@ export default function PanelLogin({
       }
 
       if (result?.redirectUrl) {
-        window.location.assign(result.redirectUrl);
+        const safePath = getSafeInternalPath(result.redirectUrl);
+
+        if (!safePath) {
+          setError("Sunucudan güvenli olmayan bir yönlendirme geldi.");
+          return;
+        }
+
+        window.location.assign(safePath);
         return;
       }
 
@@ -118,13 +153,9 @@ export default function PanelLogin({
               TR LIVE · SECURE ACCESS
             </p>
 
-            <h1 className="text-2xl font-extrabold text-white">
-              {title}
-            </h1>
+            <h1 className="text-2xl font-extrabold text-white">{title}</h1>
 
-            <p className="mt-2 text-sm text-neutral-400">
-              {description}
-            </p>
+            <p className="mt-2 text-sm text-neutral-400">{description}</p>
           </div>
 
           <div className="mb-6 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-center">
@@ -180,11 +211,7 @@ export default function PanelLogin({
                   aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-amber-300"
                 >
-                  {showPassword ? (
-                    <EyeOff size={19} />
-                  ) : (
-                    <Eye size={19} />
-                  )}
+                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
                 </button>
               </div>
             </div>
